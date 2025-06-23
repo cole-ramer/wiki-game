@@ -77,8 +77,17 @@ let get_first_item_of_all_unordered_lists contents : string list =
 
 (* Gets the first item of the second unordered list in an HTML page. *)
 let get_first_item_of_second_unordered_list contents : string =
-  ignore (contents : string);
-  failwith "TODO"
+  let open Soup in
+  parse contents
+  $$ "ul"
+  |> to_list
+  |> List.tl_exn
+  |> List.hd_exn
+  |> child_element
+  |> Option.value_exn
+  |> texts
+  |> String.concat ~sep:""
+  |> String.strip
 ;;
 
 (* Gets all bolded text from an HTML page. *)
