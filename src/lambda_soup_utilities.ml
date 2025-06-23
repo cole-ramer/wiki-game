@@ -78,11 +78,11 @@ let get_first_item_of_all_unordered_lists contents : string list =
 (* Gets the first item of the second unordered list in an HTML page. *)
 let get_first_item_of_second_unordered_list contents : string =
   let open Soup in
+  let second_ul all_uls = List.tl_exn all_uls |> List.hd_exn in
   parse contents
   $$ "ul"
   |> to_list
-  |> List.tl_exn
-  |> List.hd_exn
+  |> second_ul
   |> child_element
   |> Option.value_exn
   |> texts
