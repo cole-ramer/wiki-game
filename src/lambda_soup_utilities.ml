@@ -66,8 +66,10 @@ let get_first_item_of_all_unordered_lists contents : string list =
   $$ "ul"
   |> to_list
   |> List.map ~f:(fun ul ->
-    child ul
-    |> Option.value_exn
+    let node_repersentation_of_first_li =
+      child_element ul |> Option.value_exn
+    in
+    node_repersentation_of_first_li
     |> texts
     |> String.concat ~sep:""
     |> String.strip)
