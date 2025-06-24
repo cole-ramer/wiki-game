@@ -105,6 +105,20 @@ let get_first_item_of_second_unordered_list contents : string =
   |> String.strip
 ;;
 
+let%expect_test "get_first_item_of_second_unordered_list" =
+  (* This test uses existing files on the filesystem. *)
+  let contents =
+    File_fetcher.fetch_exn
+      (Local (File_path.of_string "../resources/wiki"))
+      ~resource:"Carnivore"
+  in
+  print_endline (get_first_item_of_second_unordered_list contents);
+  [%expect
+    {| 
+    All birds of prey, such as hawks, eagles, falcons and owls
+    |}]
+;;
+
 (* Gets all bolded text from an HTML page. *)
 let get_bolded_text contents : string list =
   let open Soup in
@@ -112,6 +126,24 @@ let get_bolded_text contents : string list =
   $$ "b"
   |> to_list
   |> List.map ~f:(fun b -> texts b |> String.concat ~sep:"" |> String.strip)
+;;
+
+let%expect_test "get_bolded_texts" =
+  (* This test uses existing files on the filesystem. *)
+  let contents =
+    File_fetcher.fetch_exn
+      (Local (File_path.of_string "../resources/wiki"))
+      ~resource:"Carnivore"
+  in
+  List.iter (get_bolded_text contents) ~f:print_endline;
+  [%expect
+    {| 
+    carnivore
+    Predators
+    Scavengers
+    insectivores
+    piscivores
+    |}]
 ;;
 
 (* [make_command ~summary ~f] is a helper function that builds a simple HTML parsing
