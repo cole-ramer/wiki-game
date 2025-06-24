@@ -75,6 +75,21 @@ let get_first_item_of_all_unordered_lists contents : string list =
     |> String.strip)
 ;;
 
+let%expect_test "get_first_item_of_all_unordered_lists" =
+  (* This test uses existing files on the filesystem. *)
+  let contents =
+    File_fetcher.fetch_exn
+      (Local (File_path.of_string "../resources/wiki"))
+      ~resource:"Carnivore"
+  in
+  List.iter (get_first_item_of_all_unordered_lists contents) ~f:print_endline;
+  [%expect
+    {| 
+    All feliforms, such as domestic cats, big cats, hyenas, mongooses, civets
+    All birds of prey, such as hawks, eagles, falcons and owls
+    |}]
+;;
+
 (* Gets the first item of the second unordered list in an HTML page. *)
 let get_first_item_of_second_unordered_list contents : string =
   let open Soup in
