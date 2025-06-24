@@ -14,9 +14,80 @@ open! Core
    One nice think about Wikipedia is that stringent content moderation results in
    uniformity in article format. We can expect that all Wikipedia article links parsed
    from a Wikipedia page will have the form "/wiki/<TITLE>". *)
+(*REVIST HERE NOT SURE IF THIS IS THE BEST APPROACH TO HANDLING ALL THE OPTIONS*)
+let get_link a_node =
+  let open Soup in
+  match a_node |> element with
+  | Some a_node_element ->
+    (match attribute "href" a_node_element with
+     | Some link -> link
+     (* Subsitutes empty link for no link for increasing the usability of the get_link function,
+        this works because is_link will fail b/c it does not have the /wiki/ substring*)
+     | None -> "")
+  | None -> ""
+;;
+
+let is_link link : bool = String.is_substring link ~substring:"/wiki/"
+
+let is_not_namespace link : bool =
+  match Wikipedia_namespace.namespace link with
+  | None -> true
+  | Some _ -> false
+;;
+
+let is_wiki_link_and_not_namespace a_node : bool =
+  let link = get_link a_node in
+  is_link link && is_not_namespace link
+;;
+
 let get_linked_articles contents : string list =
-  ignore (contents : string);
-  failwith "TODO"
+  let open Soup in
+  parse contents
+  $$ "a"
+  |> to_list
+  |> List.filter ~f:is_wiki_link_and_not_namespace
+  |> List.map ~f:get_link
+  (* Removes duplicate links *)
+  |> List.sort ~compare:String.compare
+  |> List.remove_consecutive_duplicates ~equal:String.equal
+;;
+
+let%expect_test "get_linked_articles_local" =
+  (* This test uses existing files on the filesystem. *)
+  let contents =
+    File_fetcher.fetch_exn
+      (Local (File_path.of_string "../resources/wiki"))
+      ~resource:"Cat"
+  in
+  List.iter (get_linked_articles contents) ~f:print_endline;
+  [%expect
+    {|
+    /wiki/Carnivore
+    /wiki/Domestication_of_the_cat
+    /wiki/Mammal
+    /wiki/Species
+    |}]
+;;
+
+let%expect_test "get_linked_articles_remote" =
+  (* This test uses existing files on the filesystem. *)
+  let contents =
+    File_fetcher.fetch_exn
+      Remote
+      ~resource:"https://en.wikipedia.org/wiki/Endara"
+  in
+  List.iter (get_linked_articles contents) ~f:print_endline;
+  [%expect
+    {|
+    /wiki/Endara
+    /wiki/Given_name
+    /wiki/Gonzalo_Endara_Crow
+    /wiki/Guido_J._Martinelli_Endara
+    /wiki/Guillermo_Endara
+    /wiki/Iv%C3%A1n_Endara
+    /wiki/Main_Page
+    /wiki/Surname
+    |}]
 ;;
 
 let print_links_command =
@@ -47,8 +118,8 @@ let visualize_command =
   let open Command.Let_syntax in
   Command.basic
     ~summary:
-      "parse a file listing interstates and generate a graph visualizing the highway \
-       network"
+      "parse a file listing interstates and generate a graph visualizing \
+       the highway network"
     [%map_open
       let how_to_fetch = File_fetcher.How_to_fetch.param
       and origin = flag "origin" (required string) ~doc:" the starting page"
@@ -87,11 +158,14 @@ let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
 let find_path_command =
   let open Command.Let_syntax in
   Command.basic
-    ~summary:"Play wiki game by finding a link between the origin and destination pages"
+    ~summary:
+      "Play wiki game by finding a link between the origin and destination \
+       pages"
     [%map_open
       let how_to_fetch = File_fetcher.How_to_fetch.param
       and origin = flag "origin" (required string) ~doc:" the starting page"
-      and destination = flag "destination" (required string) ~doc:" the destination page"
+      and destination =
+        flag "destination" (required string) ~doc:" the destination page"
       and max_depth =
         flag
           "max-depth"
