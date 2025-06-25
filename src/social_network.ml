@@ -128,23 +128,26 @@ let find_friend_group (network : Network.t) ~person : Person.t list =
     (* [G.add_edge] auomatically adds the endpoints as vertices in the graph if
        they don't already exist. *)
     G.add_edge friendship_graph person1 person2);
-  let visited = String.Hash_set.create () in
-  let to_visit = Queue.create () in
-  Queue.enqueue to_visit person;
-  let rec traverse () =
-    match Queue.dequeue to_visit with
+  let visited_friends = String.Hash_set.create () in
+  let friend_to_visit = Queue.create () in
+  Queue.enqueue friend_to_visit person;
+  let rec traverse_friend_group () =
+    match Queue.dequeue friend_to_visit with
+    (* No more firends left in the friend group*)
     | None -> ()
-    | Some current_node ->
-      if not (Hash_set.mem visited current_node)
+    | Some current_friend ->
+      if not (Hash_set.mem visited_friends current_friend)
       then (
-        Hash_set.add visited current_node;
-        let adjacent_nodes = G.succ friendship_graph current_node in
-        List.iter adjacent_nodes ~f:(fun next_node ->
-          Queue.enqueue to_visit next_node));
-      traverse ()
+        Hash_set.add visited_friends current_friend;
+        let adjacent_friends = G.succ friendship_graph current_friend in
+        List.iter adjacent_friends ~f:(fun next_friend ->
+          Queue.enqueue friend_to_visit next_friend));
+      (* moves onto the next friend in queue*)
+      traverse_friend_group ()
   in
-  traverse ();
-  Hash_set.to_list visited
+  (* inital traversal starting at soure friend*)
+  traverse_friend_group ();
+  Hash_set.to_list visited_friends
 ;;
 
 let find_friend_group_command =
