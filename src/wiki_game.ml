@@ -107,11 +107,8 @@ let print_links_command =
    implementation can be tested locally on the small dataset in the ../resources/wiki
    directory. *)
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (output_file : File_path.t);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  let depth_hashtbl = Hashtbl.create (module String) in
+  Hashtbl.add depth_hashtbl ~key:
 ;;
 
 let visualize_command =
