@@ -1,12 +1,18 @@
 open! Core
 module City = String
 
+module Road = struct
+  include String
+
+  let default = ""
+end
+
 module Network = struct
   (* We can represent our social network graph as a set of connections, where a connection
      represents a friendship between two people. *)
   module Connection = struct
     module T = struct
-      type t = City.t * City.t [@@deriving compare, sexp]
+      type t = City.t * Road.t * City.t [@@deriving compare, sexp]
     end
 
     (* This funky syntax is necessary to implement sets of [Connection.t]s. This is needed
@@ -27,7 +33,12 @@ module Network = struct
     ;;
 
     let of_string s =
-      String.split s ~on:',' |> List.tl_exn |> get_all_city_pairs
+      let interstate_and_cities = String.split s ~on:',' in
+      let all_city_pairs =
+        get_all_city_pairs (List.tl_exn interstate_and_cities)
+      in
+      let interstate = List.hd_exn interstate_and_cities in
+      List.map all_city_pairs ~f:(fun (a, b) -> a, interstate, b)
     ;;
   end
 
@@ -64,7 +75,7 @@ let load_command =
         printf !"%{sexp: Network.t}\n" network]
 ;;
 
-module G = Graph.Imperative.Graph.Concrete (City)
+module G = Graph.Imperative.Graph.ConcreteLabeled (City) (Road)
 
 (* We extend our [Graph] structure with the [Dot] API so that we can easily render
    constructed graphs. Documentation about this API can be found here:
@@ -76,7 +87,7 @@ module Dot = Graph.Graphviz.Dot (struct
        graph. Check out the ocamlgraph graphviz API
        (https://github.com/backtracking/ocamlgraph/blob/master/src/graphviz.mli) for
        examples of what values can be set here. *)
-    let edge_attributes _ = [ `Dir `None ]
+    let edge_attributes (_, label, _) = [ `Dir `None; `Label label ]
     let default_edge_attributes _ = []
     let get_subgraph _ = None
     let vertex_attributes v = [ `Shape `Box; `Label v; `Fillcolor 1000 ]
@@ -108,11 +119,11 @@ let visualize_command =
       fun () ->
         let network = Network.of_file input_file in
         let graph = G.create () in
-        Set.iter network ~f:(fun (person1, person2) ->
+        Set.iter network ~f:(fun (city1, interstate, city2) ->
           (* [G.add_edge] auomatically adds the endpoints as vertices in the graph if
              they don't already exist. *)
-          print_endline ("person1: " ^ person1 ^ " person2:" ^ person2);
-          G.add_edge graph person1 person2);
+          (* print_endline ("person1: " ^ person1 ^ " person2:" ^ person2); *)
+          G.add_edge_e graph (city1, interstate, city2));
         Dot.output_graph
           (Out_channel.create (File_path.to_string output_file))
           graph;

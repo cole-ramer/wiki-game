@@ -122,7 +122,7 @@ let visualize_command =
 
 (* [find_friend_group network ~person] returns a list of all people who are mutually
    connected to the provided [person] in the provided [network]. *)
-let find_friend_group network ~person : Person.t list =
+let find_friend_group (network : Network.t) ~person : Person.t list =
   ignore (network : Network.t);
   ignore (person : Person.t);
   failwith "TODO"
