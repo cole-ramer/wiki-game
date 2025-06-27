@@ -210,15 +210,17 @@ let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
               (current_article.depth + 1)
               ~how_to_fetch
           in
-          if
-            (* Checks both direction to avoid duplicate edges*)
-            not
-              (G.mem_edge wiki_graph current_article child_aritcle_t
-               || G.mem_edge wiki_graph child_aritcle_t current_article)
-          then G.add_edge wiki_graph current_article child_aritcle_t;
+          (match
+             ( G.mem_edge wiki_graph current_article child_aritcle_t
+             , G.mem_edge wiki_graph child_aritcle_t current_article )
+           with
+           | false, false ->
+             G.add_edge wiki_graph current_article child_aritcle_t
+           | true, false | false, true | true, true -> ());
           (* reduces redundant dequeuing of already visited articles*)
-          if not (Hash_set.mem visited_articles child_aritcle_t)
-          then Queue.enqueue articles_to_visit child_aritcle_t));
+          match Hash_set.mem visited_articles child_aritcle_t with
+          | false -> Queue.enqueue articles_to_visit child_aritcle_t
+          | true -> ()));
       (* Traverses as long as queue is not empty even if current_article has been visisted*)
       traverse ()
   in
