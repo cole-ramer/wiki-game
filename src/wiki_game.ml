@@ -154,13 +154,24 @@ let print_links_command =
         List.iter (get_linked_articles contents) ~f:print_endline]
 ;;
 
+(* fetches an article (local or remote) based on the how_to_fetch and resource
+   and returns the html and contents as a string*)
 let get_contents ~resource ~how_to_fetch =
   File_fetcher.fetch_exn how_to_fetch ~resource
 ;;
 
+(* outputs the title of an article based on a string of contents*)
 let get_title contents : string =
   let open Soup in
   parse contents $ "title" |> R.leaf_text
+;;
+
+(* takes in a url and depth of an article, along with an object with the how_to_fetch details
+   outputs an Article.t with the matching url, title, and depth*)
+let create_article_t_from_url_and_depth url depth ~how_to_fetch : Article.t =
+  let contents = get_contents ~resource:url ~how_to_fetch in
+  let title = get_title contents in
+  Article.create ~url ~title depth
 ;;
 
 (* [visualize] should explore all linked articles up to a distance of [max_depth] away
@@ -170,86 +181,51 @@ let get_title contents : string =
    directory. *)
 
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  print_endline origin;
   let visited_articles = Article.Hash_set.create () in
-  let wiki_graph = G.create () in
   let articles_to_visit = Queue.create () in
-  let title = get_contents ~resource:origin ~how_to_fetch |> get_title in
-  Queue.enqueue articles_to_visit (Article.create ~url:origin ~title (-1));
+  let wiki_graph = G.create () in
+  let origin_article =
+    create_article_t_from_url_and_depth origin 0 ~how_to_fetch
+  in
+  Queue.enqueue articles_to_visit origin_article;
   let rec traverse () =
     match Queue.dequeue articles_to_visit with
-    | None -> print_endline "Q is empty"
+    | None -> ()
     | Some (current_article : Article.t) ->
-      print_endline ("dequed " ^ current_article.title);
       if
         (not (Hash_set.mem visited_articles current_article))
-        && current_article.depth < max_depth
+        (* Note max_depth is the max_depth of verticies
+           that we explore the children of*)
+        && current_article.depth <= max_depth
       then (
-        (* print_endline
-           (Bool.to_string (Hash_set.mem visited_articles current_article));
-           print_endline current_article.url; *)
         Hash_set.add visited_articles current_article;
-        if String.equal current_article.title "Dog - Wikipedia"
-        then print_endline "Dog";
-        let contents =
+        let current_article_contents =
           get_contents ~resource:current_article.url ~how_to_fetch
         in
-        get_linked_articles contents
+        get_linked_articles current_article_contents
         |> List.iter ~f:(fun child_article_url ->
-          let child_article_title =
-            get_contents ~resource:child_article_url ~how_to_fetch
-            |> get_title
-          in
           let child_aritcle_t =
-            Article.create
-              ~url:child_article_url
-              ~title:child_article_title
+            create_article_t_from_url_and_depth
+              child_article_url
               (current_article.depth + 1)
+              ~how_to_fetch
           in
-          print_endline current_article.title;
-          if String.equal current_article.title "Dog - Wikipedia"
-          then
-            print_endline
-              ("checking if I should add an edge from Dog -> "
-               ^ child_article_title);
           if
+            (* Checks both direction to avoid duplicate edges*)
             not
               (G.mem_edge wiki_graph current_article child_aritcle_t
                || G.mem_edge wiki_graph child_aritcle_t current_article)
-          then
-            print_endline
-              ("Current Article: "
-               ^ current_article.title
-               ^ ","
-               ^ current_article.url
-               ^ ","
-               ^ Int.to_string current_article.depth);
-          print_endline
-            ("Child Article: "
-             ^ child_aritcle_t.title
-             ^ ","
-             ^ child_aritcle_t.url
-             ^ ","
-             ^ Int.to_string child_aritcle_t.depth);
-          print_endline
-            ("contains current -> child "
-             ^ Bool.to_string
-                 (G.mem_edge wiki_graph current_article child_aritcle_t));
-          print_endline
-            ("contains child -> current "
-             ^ Bool.to_string
-                 (G.mem_edge wiki_graph child_aritcle_t current_article));
-          print_endline "";
-          G.add_edge wiki_graph current_article child_aritcle_t;
+          then G.add_edge wiki_graph current_article child_aritcle_t;
+          (* reduces redundant dequeuing of already visited articles*)
           if not (Hash_set.mem visited_articles child_aritcle_t)
           then Queue.enqueue articles_to_visit child_aritcle_t));
+      (* Traverses as long as queue is not empty even if current_article has been visisted*)
       traverse ()
   in
   traverse ();
   Dot.output_graph
     (Out_channel.create (File_path.to_string output_file))
-    wiki_graph;
-  printf !"Done! Wrote dot file to %{File_path}\n%!" output_file
+    wiki_graph
 ;;
 
 let visualize_command =
