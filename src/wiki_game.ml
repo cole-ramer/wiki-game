@@ -7,10 +7,11 @@ module Article = struct
       ; title : string
       ; depth : int
       }
-    [@@deriving compare, sexp]
+    [@@deriving sexp]
 
-    let equal t1 t2 = String.equal t1.url t2.url
-    let hash t = String.hash t.url
+    let equal t1 t2 = String.equal t1.title t2.title
+    let hash t = String.hash t.title
+    let compare t1 t2 = String.compare t1.title t2.title
   end
 
   include T
@@ -169,23 +170,27 @@ let get_title contents : string =
    directory. *)
 
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
+  print_endline origin;
   let visited_articles = Article.Hash_set.create () in
   let wiki_graph = G.create () in
   let articles_to_visit = Queue.create () in
   let title = get_contents ~resource:origin ~how_to_fetch |> get_title in
-  Queue.enqueue articles_to_visit (Article.create ~url:origin ~title 0);
+  Queue.enqueue articles_to_visit (Article.create ~url:origin ~title (-1));
   let rec traverse () =
     match Queue.dequeue articles_to_visit with
-    | None -> ()
+    | None -> print_endline "Q is empty"
     | Some (current_article : Article.t) ->
+      print_endline ("dequed " ^ current_article.title);
       if
         (not (Hash_set.mem visited_articles current_article))
         && current_article.depth < max_depth
       then (
-        print_endline
-          (Bool.to_string (Hash_set.mem visited_articles current_article));
-        print_endline current_article.title;
+        (* print_endline
+           (Bool.to_string (Hash_set.mem visited_articles current_article));
+           print_endline current_article.url; *)
         Hash_set.add visited_articles current_article;
+        if String.equal current_article.title "Dog - Wikipedia"
+        then print_endline "Dog";
         let contents =
           get_contents ~resource:current_article.url ~how_to_fetch
         in
@@ -201,16 +206,44 @@ let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
               ~title:child_article_title
               (current_article.depth + 1)
           in
-          print_endline
-            (current_article.title ^ " + " ^ child_aritcle_t.title);
+          print_endline current_article.title;
+          if String.equal current_article.title "Dog - Wikipedia"
+          then
+            print_endline
+              ("checking if I should add an edge from Dog -> "
+               ^ child_article_title);
           if
             not
               (G.mem_edge wiki_graph current_article child_aritcle_t
-               && G.mem_edge wiki_graph child_aritcle_t current_article)
-          then G.add_edge wiki_graph current_article child_aritcle_t;
+               || G.mem_edge wiki_graph child_aritcle_t current_article)
+          then
+            print_endline
+              ("Current Article: "
+               ^ current_article.title
+               ^ ","
+               ^ current_article.url
+               ^ ","
+               ^ Int.to_string current_article.depth);
+          print_endline
+            ("Child Article: "
+             ^ child_aritcle_t.title
+             ^ ","
+             ^ child_aritcle_t.url
+             ^ ","
+             ^ Int.to_string child_aritcle_t.depth);
+          print_endline
+            ("contains current -> child "
+             ^ Bool.to_string
+                 (G.mem_edge wiki_graph current_article child_aritcle_t));
+          print_endline
+            ("contains child -> current "
+             ^ Bool.to_string
+                 (G.mem_edge wiki_graph child_aritcle_t current_article));
+          print_endline "";
+          G.add_edge wiki_graph current_article child_aritcle_t;
           if not (Hash_set.mem visited_articles child_aritcle_t)
-          then Queue.enqueue articles_to_visit child_aritcle_t;
-          traverse ()))
+          then Queue.enqueue articles_to_visit child_aritcle_t));
+      traverse ()
   in
   traverse ();
   Dot.output_graph
