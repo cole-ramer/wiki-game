@@ -1,5 +1,56 @@
 open! Core
 
+module Article = struct
+  module T = struct
+    type t =
+      { url : string
+      ; title : string
+      ; depth : int
+      }
+    [@@deriving compare, sexp]
+
+    let equal t1 t2 = String.equal t1.url t2.url
+    let hash t = String.hash t.url
+  end
+
+  include T
+
+  let create ~url ~title depth = { url; title; depth }
+
+  module Hash_set = Hash_set.Make (T)
+end
+
+module G = Graph.Imperative.Graph.Concrete (Article)
+
+(* We extend our [Graph] structure with the [Dot] API so that we can easily render
+   constructed graphs. Documentation about this API can be found here:
+   https://github.com/backtracking/ocamlgraph/blob/master/src/dot.mli *)
+module Dot = Graph.Graphviz.Dot (struct
+    include G
+
+    (* These functions can be changed to tweak the appearance of the generated
+       graph. Check out the ocamlgraph graphviz API
+       (https://github.com/backtracking/ocamlgraph/blob/master/src/graphviz.mli) for
+       examples of what values can be set here. *)
+    let edge_attributes _ = [ `Dir `Forward ]
+    let default_edge_attributes _ = []
+    let get_subgraph _ = None
+
+    let vertex_attributes (v : Article.t) =
+      [ `Shape `Box; `Label v.title; `Fillcolor 1000 ]
+    ;;
+
+    let vertex_name (v : Article.t) =
+      String.filter v.title ~f:(fun c ->
+        not (Char.equal c '-' || Char.equal c '(' || Char.equal c ')'))
+      |> String.strip
+      |> String.substr_replace_all ~pattern:" " ~with_:"_"
+    ;;
+
+    let default_vertex_attributes _ = []
+    let graph_attributes _ = []
+  end)
+
 (* [get_linked_articles] should return a list of wikipedia article lengths contained in
    the input.
 
@@ -15,6 +66,7 @@ open! Core
    uniformity in article format. We can expect that all Wikipedia article links parsed
    from a Wikipedia page will have the form "/wiki/<TITLE>". *)
 (*REVIST HERE NOT SURE IF THIS IS THE BEST APPROACH TO HANDLING ALL THE OPTIONS*)
+
 let get_link a_node =
   let open Soup in
   match a_node |> element with
@@ -101,14 +153,70 @@ let print_links_command =
         List.iter (get_linked_articles contents) ~f:print_endline]
 ;;
 
+let get_contents ~resource ~how_to_fetch =
+  File_fetcher.fetch_exn how_to_fetch ~resource
+;;
+
+let get_title contents : string =
+  let open Soup in
+  parse contents $ "title" |> R.leaf_text
+;;
+
 (* [visualize] should explore all linked articles up to a distance of [max_depth] away
    from the given [origin] article, and output the result as a DOT file. It should use the
    [how_to_fetch] argument along with [File_fetcher] to fetch the articles so that the
    implementation can be tested locally on the small dataset in the ../resources/wiki
    directory. *)
+
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  let depth_hashtbl = Hashtbl.create (module String) in
-  Hashtbl.add depth_hashtbl ~key:
+  let visited_articles = Article.Hash_set.create () in
+  let wiki_graph = G.create () in
+  let articles_to_visit = Queue.create () in
+  let title = get_contents ~resource:origin ~how_to_fetch |> get_title in
+  Queue.enqueue articles_to_visit (Article.create ~url:origin ~title 0);
+  let rec traverse () =
+    match Queue.dequeue articles_to_visit with
+    | None -> ()
+    | Some (current_article : Article.t) ->
+      if
+        (not (Hash_set.mem visited_articles current_article))
+        && current_article.depth < max_depth
+      then (
+        print_endline
+          (Bool.to_string (Hash_set.mem visited_articles current_article));
+        print_endline current_article.title;
+        Hash_set.add visited_articles current_article;
+        let contents =
+          get_contents ~resource:current_article.url ~how_to_fetch
+        in
+        get_linked_articles contents
+        |> List.iter ~f:(fun child_article_url ->
+          let child_article_title =
+            get_contents ~resource:child_article_url ~how_to_fetch
+            |> get_title
+          in
+          let child_aritcle_t =
+            Article.create
+              ~url:child_article_url
+              ~title:child_article_title
+              (current_article.depth + 1)
+          in
+          print_endline
+            (current_article.title ^ " + " ^ child_aritcle_t.title);
+          if
+            not
+              (G.mem_edge wiki_graph current_article child_aritcle_t
+               && G.mem_edge wiki_graph child_aritcle_t current_article)
+          then G.add_edge wiki_graph current_article child_aritcle_t;
+          if not (Hash_set.mem visited_articles child_aritcle_t)
+          then Queue.enqueue articles_to_visit child_aritcle_t;
+          traverse ()))
+  in
+  traverse ();
+  Dot.output_graph
+    (Out_channel.create (File_path.to_string output_file))
+    wiki_graph;
+  printf !"Done! Wrote dot file to %{File_path}\n%!" output_file
 ;;
 
 let visualize_command =
@@ -123,7 +231,7 @@ let visualize_command =
       and max_depth =
         flag
           "max-depth"
-          (optional_with_default 10 int)
+          (optional_with_default 3 int)
           ~doc:"INT maximum length of path to search for (default 10)"
       and output_file =
         flag
